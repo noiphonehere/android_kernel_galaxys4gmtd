@@ -32,69 +32,26 @@
 #include <plat/clock.h>
 #include <plat/cpu-freq.h>
 #include <plat/media.h>
-#include <linux/delay.h>
-#include <mach/regs-clock.h>
 #ifdef CONFIG_HAS_WAKELOCK
 #include <linux/wakelock.h>
 #include <linux/earlysuspend.h>
 #include <linux/suspend.h>
 #endif
 #include "s3cfb.h"
-
-#if defined(CONFIG_S5PC110_HAWK_BOARD)
-#include "logo_rgb24_wvga_portrait_T759.h"
-#elif defined(CONFIG_S5PC110_KEPLER_BOARD)
-#include "logo_rgb24_wvga_portrait_I897.h"
-#elif defined(CONFIG_S5PC110_VIBRANTPLUS_BOARD)
-#if defined(CONFIG_VIBRANTPLUSTELUS_BOOT_LOGO)
-#include "logo_rgb24_wvga_portrait_VibrantPlusTelus.h"
-#else
+#ifdef CONFIG_S5PC110_VIBRANTPLUS_BOARD
 #include "logo_rgb24_wvga_portrait_VibrantPlus.h"
-#endif
-#elif defined(CONFIG_S5PC110_DEMPSEY_BOARD)
-#include "logo_rgb24_wvga_portrait_I997.h"
 #else
 #include "logo_rgb24_wvga_portrait.h"
+#endif
+
+#ifdef CONFIG_MACH_ARIES
+#include <mach/regs-clock.h>
 #endif
 
 #ifdef CONFIG_FB_S3C_MDNIE
 #include "s3cfb_mdnie.h"
 #include <linux/delay.h>
-#include <mach/regs-clock.h>
 #endif
-#if defined(CONFIG_FB_S3C_LDI) 
-#include "ldi_common.h"
-extern void lcd_cfg_gpio_early_suspend(void);
-extern void lcd_cfg_gpio_late_resume(void);
-#endif
-//#include<mach/gpio.h> //ansari
-/*
- *  Mark for GetLog (tkhwang)
- */
-
-struct struct_frame_buf_mark {
-	u32 special_mark_1;
-	u32 special_mark_2;
-	u32 special_mark_3;
-	u32 special_mark_4;
-	void *p_fb;
-	u32 resX;
-	u32 resY;
-	u32 bpp;    //color depth : 16 or 24
-	u32 frames; // frame buffer count : 2
-};
-
-static struct struct_frame_buf_mark  frame_buf_mark = {
-	.special_mark_1 = (('*' << 24) | ('^' << 16) | ('^' << 8) | ('*' << 0)),
-	.special_mark_2 = (('I' << 24) | ('n' << 16) | ('f' << 8) | ('o' << 0)),
-	.special_mark_3 = (('H' << 24) | ('e' << 16) | ('r' << 8) | ('e' << 0)),
-	.special_mark_4 = (('f' << 24) | ('b' << 16) | ('u' << 8) | ('f' << 0)),
-	.p_fb   = 0,
-	.resX   = 480,
-	.resY   = 800,
-	.bpp    = 32,
-	.frames = 2
-};
 
 #if (CONFIG_FB_S3C_NUM_OVLY_WIN >= CONFIG_FB_S3C_DEFAULT_WINDOW)
 #error "FB_S3C_NUM_OVLY_WIN should be less than FB_S3C_DEFAULT_WINDOW"
@@ -152,7 +109,7 @@ static int s3cfb_draw_logo(struct fb_info *fb)
 		}
 	}
 #endif
-/*
+#ifndef CONFIG_MACH_ARIES
 	if (bootloaderfb) {
 		u8 *logo_virt_buf;
 		logo_virt_buf = ioremap_nocache(bootloaderfb,
@@ -162,11 +119,12 @@ static int s3cfb_draw_logo(struct fb_info *fb)
 				fb->var.yres * fb->fix.line_length);
 		iounmap(logo_virt_buf);
 	}
-*/
+#else /*CONFIG_SAMSUNG_GALAXYS*/
 	if (readl(S5P_INFORM5)) //LPM_CHARGING mode
 		memcpy(fb->screen_base, charging, fb->var.yres * fb->fix.line_length);
 	else
 		memcpy(fb->screen_base, LOGO_RGB24, fb->var.yres * fb->fix.line_length);
+#endif
 	return 0;
 }
 #endif
@@ -245,12 +203,6 @@ static int s3cfb_map_video_memory(struct fb_info *fb)
 
 	memset(fb->screen_base, 0, fix->smem_len);
 	win->owner = DMA_MEM_FIMD;
-
-	/*
-	 *  Mark for GetLog (tkhwang)
-	 */
-
-   	frame_buf_mark.p_fb = pdata->pmem_start;
 
 	return 0;
 }
@@ -1043,10 +995,8 @@ static int __devinit s3cfb_probe(struct platform_device *pdev)
 
 	fbdev->lcd = (struct s3cfb_lcd *)pdata->lcd;
 
-#if ! defined (CONFIG_S5PC110_DEMPSEY_BOARD)
 	if (pdata->cfg_gpio)
 		pdata->cfg_gpio(pdev);
-#endif
 
 	if (pdata->clk_on)
 		pdata->clk_on(pdev, &fbdev->clock);
@@ -1092,13 +1042,10 @@ static int __devinit s3cfb_probe(struct platform_device *pdev)
 		goto err_register;
 	}
 
-	frame_buf_mark.bpp = fbdev->fb[pdata->default_win]->var.bits_per_pixel;
-
-
 	s3cfb_set_clock(fbdev);
 #ifdef CONFIG_FB_S3C_MDNIE
 	mDNIe_Mode_Set();
-#endif 
+#endif
 	s3cfb_set_window(fbdev, pdata->default_win, 1);
 
 	s3cfb_set_alpha_value_width(fbdev, pdata->default_win);
@@ -1114,14 +1061,14 @@ static int __devinit s3cfb_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_FB_S3C_LCD_INIT
-#if defined CONFIG_FB_S3C_TL2796 || defined (CONFIG_FB_S3C_uPD161224)
+#if defined(CONFIG_FB_S3C_TL2796)
 	if (pdata->backlight_on)
 		pdata->backlight_on(pdev);
 #endif
-/*
+#ifndef CONFIG_MACH_ARIES
 	if (!bootloaderfb && pdata->reset_lcd)
 		pdata->reset_lcd(pdev);
-*/	
+#endif
 #endif
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -1235,16 +1182,6 @@ void s3cfb_early_suspend(struct early_suspend *h)
 		container_of(h, struct s3cfb_global, early_suspend);
 
 	pr_debug("s3cfb_early_suspend is called\n");
-#if defined (CONFIG_S5PC110_DEMPSEY_BOARD)
-#if defined(CONFIG_FB_S3C_LDI) //Ansari
-        ldi_common_disable();
-        //printk("ANSARI[%s]\n",__func__);
-        //s3c_gpio_setpin(GPIO_MLCD_RST, 1);
-        msleep(150);
-//NAGSM_Android_SEL_Kernel_Aakash_20110120
-#endif
-#endif
-
 #ifdef CONFIG_FB_S3C_MDNIE
 	writel(0,fbdev->regs + 0x27c);
 	msleep(20);
@@ -1255,9 +1192,9 @@ void s3cfb_early_suspend(struct early_suspend *h)
 	s3cfb_display_off(fbdev);
 #ifdef CONFIG_FB_S3C_MDNIE
 	s3c_mdnie_off();
-#endif 
+#endif
 	clk_disable(fbdev->clock);
-#if defined CONFIG_FB_S3C_TL2796 || defined (CONFIG_FB_S3C_uPD161224) || defined (CONFIG_FB_S3C_LDI)
+#if defined(CONFIG_FB_S3C_TL2796)
 	lcd_cfg_gpio_early_suspend();
 #endif
 	regulator_disable(fbdev->vlcd);
@@ -1291,7 +1228,7 @@ void s3cfb_late_resume(struct early_suspend *h)
 	if (ret < 0)
 		dev_err(fbdev->dev, "failed to enable vlcd\n");
 
-#if defined CONFIG_FB_S3C_TL2796 || defined (CONFIG_FB_S3C_uPD161224) || defined (CONFIG_FB_S3C_LDI)	
+#if defined(CONFIG_FB_S3C_TL2796)
 	lcd_cfg_gpio_late_resume();
 #endif
 	dev_dbg(fbdev->dev, "wake up from suspend\n");
@@ -1332,15 +1269,6 @@ void s3cfb_late_resume(struct early_suspend *h)
 
 	if (pdata->reset_lcd)
 		pdata->reset_lcd(pdev);
-#if defined (CONFIG_S5PC110_DEMPSEY_BOARD)
-#if defined(CONFIG_FB_S3C_LDI) //Ansari
-//      if (pdata->reset_lcd)
-//              pdata->reset_lcd(pdev);
-        ldi_power_on();
-//NAGSM_Android_SEL_Kernel_Aakash_20110120
-#endif
-#endif
-  printk("ANSARI[%s]\n",__func__);
 
 	pr_info("s3cfb_late_resume is complete\n");
 	return ;
